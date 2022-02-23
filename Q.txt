@@ -1,0 +1,58 @@
+# 4 bit represent 1 data, complex data consists of 2 data (R and I)
+# that is 8 bit = 1 complex data
+
+bin_bits = get_bits(data, gi, gp)
+len_content = 174208
+num = 21776
+len_data = 12800
+type_data = complex128 12800*1 16 byte
+_interp = 12.5/10
+# the sampling rate of N300 is 12.5Mbps, while the sampling rate of tag is 10Mbps
+
+offset = 6
+cp_len = int(16*_interp) = 20
+N = len(data)//128-cp_len = 80	// #整数除法
+data reshape前：	12800*1 	12800	complex128 16byte
+data reshape后：	128*100	12800
+data取偏置后：	128*80	10240
+dec_data作变换后：	128*80	10240	complex128 16byte
+
+--DSP流程--
+parse函数提取文本数据，得到12800个复信号数据
+get_bits函数首先确定偏置6，CP长20，全部OFDM符号数80
+1、对12800个复数据划分为128*100，从偏置起提取80个
+     得到128*80个OFDM符号，进行fft，得到128*80星座符号
+2、能量检测，从第10个起取到到数第十个
+      对共60个OFDM的每个槽内128个符号作平均，取最大值的0.7为门限（且i不等于30？）
+      将满足要求的OFDM槽下标记录为bins，2*1=[14,66]
+3、均衡序列长度为8，全为1（零相），……
+      eqlist 8*1 与 dec_data 8*2 作 np.matmul 越相同越接近1，否则-1
+      H_est = np.matmul(eqlist[:], dec_data[:n,bins])/n    #若0则记为1
+      eq_data = dec_data[:,bins]/H_est
+      得到均衡过后的eq_data 128*2
+      补偿相位至第一行为零相
+      取相位作e指数代替原数组eq_data 128*2（其实相当于去除幅度影响而已）
+4、创建结构体bin_bits
+4.1利用128中前8个训练相偏纠正，采用PID算法，gp=0.2，gi=0.2
+      起初delta_fi_est = 0，记乘后的数组元素值为x
+      delta_fi = gi*(np.angle(x)+np.pi*int(eqlist[k]==-1))
+      delta_fi_est = gp*delta_fi_est+delta_fi
+4.2用训练值补偿相位，ML判决，继续用PID优化。
+      delta_fi = gi*(np.angle(x)+0或pi)
+      delta_fi_est = gp*delta_fi_est+delta_fi
+
+学长早~昨天我读通了这个代码，有个别问题总结了一下
+
+(1)#6 from client_trans import * 这个库是干啥的，我没查明白，删了也好像没有影响到程序
+(2)#47 从start=10这里开始，我理解为检测各个符号的平均能量，超过最大值的0.7才认为有效，门限参数0.7可以调节；但是我不太明白后面为什么有个i!=N//2-start？
+(3)#72 这里在作均衡，eqlist序列的长度和取值，是依据什么取的？协议要求还是说经验取值？
+(4)#177 这里开始用的gi, gp是PID控制吧，我得学一下怎么选参数
+
+还有，那个DCSS的Matlab代码能否发我一份，我想一起看着先
+谢谢啦
+
+
+
+
+
+
